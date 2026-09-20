@@ -559,7 +559,7 @@ with tab_items:
             if c2.button("Hapus", key=f"rm_{item}"):
                 remove_item(item)
                 st.rerun()
-
+st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
 # --- Tab 3: Aturan ------------------------------------------------------
 with tab_constraints:
     if not st.session_state.item_list:
@@ -736,7 +736,7 @@ with tab_constraints:
                     st.rerun()
         else:
             st.caption("Belum ada item yang perlu dijadwalkan di hari berbeda.")
-
+st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
 # --- Tab 4: Jadwalkan ----------------------------------------------------
 with tab_run:
     items = st.session_state.item_list
@@ -851,3 +851,4 @@ with tab_run:
 
         elif result:
             st.info("Pengaturan periode, tanggal, atau hari libur berubah sejak jadwal terakhir dibuat. Klik **Buat Jadwal** lagi.")
+st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
