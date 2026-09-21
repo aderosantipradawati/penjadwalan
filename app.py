@@ -55,14 +55,14 @@ def init_state():
     defaults = {
         "item_list": [],
         "banned_days": {},
-        "excluded_days": set(),   # hari/tanggal libur — tidak ada jadwal sama sekali
+        "excluded_days": set(),
         "exclusion_pairs": [],
         "scope": "Seminggu",
         "month": today.month,
         "year": today.year,
         "capacity_mode": "Otomatis",
         "capacity_manual": 1,
-        "capacity_target_mode": "Tepat",  # "Tepat" = wajib pas; "Maksimal" = batas atas, boleh kurang
+        "capacity_target_mode": "Tepat",
         "result": None,
     }
     for key, val in defaults.items():
@@ -73,9 +73,6 @@ def init_state():
 init_state()
 
 st.set_page_config(page_title="Penjadwalan", layout="centered")
-
-# Sembunyikan menu bawaan Streamlit (hamburger menu, tombol Deploy, footer, dsb.)
-# supaya tampil seperti aplikasi mandiri, terutama di layar HP.
 st.markdown(
     """
     <style>
@@ -103,10 +100,11 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-if st.session_state.scope == "Seminggu":
-    st.title("Jadwal Mingguan", help="Susun jadwal secara otomatis untuk satu minggu dengan mempertimbangkan hari yang tidak boleh digunakan, item yang tidak boleh muncul di hari yang sama, dan target jumlah item per hari.")
-else:
-    st.title("Jadwal Bulanan", help="Susun jadwal secara otomatis untuk satu bulan tertentu, dengan mempertimbangkan tanggal yang tidak boleh digunakan, item yang tidak boleh muncul di tanggal yang sama, dan target jumlah item per hari.")
+
+# Tempat judul dicadangkan di sini (posisi paling atas halaman), tapi diisi
+# BELAKANGAN — setelah tab Periode sempat memproses perubahan radio — supaya
+# judul selalu mengikuti scope TERBARU, bukan telat satu interaksi.
+title_placeholder = st.empty()
 
 # ----------------------------------------------------------------------
 # Item (helper)
@@ -183,14 +181,7 @@ def compute_capacity(n_items, n_days, mode, manual_value):
         return max(1, int(manual_value))
     return max(1, math.ceil(n_items / n_days))
 
-
 def compute_occurrences(items, n_days, capacity, target_mode="Tepat"):
-    """Tepat: total slot (kapasitas × hari) dibagi ke item — sisa bagi jatuh ke
-    ITEM, jadi tiap hari pas sama kapasitas, tapi jumlah kemunculan antar item
-    bisa beda (misal ada yang 2x, ada yang 3x).
-    Maksimal: tiap item dapat jumlah kemunculan yang SAMA RATA (adil) — sisa
-    bagi jatuh ke HARI nanti (lihat run_ga), jadi total per hari bisa sedikit
-    berbeda (misal kadang 5, kadang 6) menyesuaikan pembagian rata itu."""
     n = len(items)
     if n == 0 or n_days == 0:
         return {}
@@ -201,13 +192,11 @@ def compute_occurrences(items, n_days, capacity, target_mode="Tepat"):
     base, rem = divmod(total_slots, n)
     return {item: base + (1 if i < rem else 0) for i, item in enumerate(items)}
 
-
 def build_tokens(items, occurrences):
     tokens = []
     for item in items:
         tokens.extend([item] * occurrences.get(item, 0))
     return tokens
-
 
 # ----------------------------------------------------------------------
 # GA
@@ -223,11 +212,6 @@ def run_ga(tokens, day_keys, banned_days, exclusion_pairs, capacity,
     }
     pair_list = list(exclusion_pairs)
 
-    # Untuk mode Maksimal: karena jumlah kemunculan item sudah dipastikan SAMA
-    # RATA (lihat compute_occurrences), sisa pembagian sekarang jatuh ke hari —
-    # jadi target realistis per hari adalah rentang [low, high], bukan angka
-    # kapasitas mentah. Contoh: 40 token / 7 hari -> low=5, high=6 (5 hari
-    # dapat 6, 2 hari dapat 5). Kedua angka itu SAH, tidak ada penalti.
     if n_days:
         day_base, day_rem = divmod(n_tokens, n_days)
     else:
@@ -275,7 +259,6 @@ def run_ga(tokens, day_keys, banned_days, exclusion_pairs, capacity,
 
         return score
 
-
     def tournament(pop, k=5):
         return max(random.sample(pop, min(k, len(pop))), key=lambda ind: ind["fitness"])
 
@@ -310,7 +293,6 @@ def run_ga(tokens, day_keys, banned_days, exclusion_pairs, capacity,
     history.append({"gen": generations, "score": best["fitness"]})
 
     return best["chromo"], best["fitness"], history
-
 
 def diagnose(tokens, chromo, day_keys, day_labels, banned_days, exclusion_pairs, capacity, target_mode="Tepat"):
     violations = []
@@ -360,13 +342,6 @@ def diagnose(tokens, chromo, day_keys, day_labels, banned_days, exclusion_pairs,
 
 
 def get_calendar_weeks(scope, year, month, avail_items, excluded_days):
-    """Struktur data bersama untuk tampilan kalender di layar MAUPUN pdf,
-    supaya keduanya selalu identik. Mengembalikan list minggu; tiap minggu
-    adalah list 7 sel (Senin..Minggu), tiap sel dict berisi:
-      - header_markup: teks header (pakai <br/> untuk baris baru)
-      - content_markup: isi sel (pakai <br/>, dan <font color="..."> untuk warna)
-      - is_blank: True kalau sel ini di luar bulan (khusus tampilan bulanan)
-    """
     def content_for(key):
         if key in excluded_days:
             return '<font color="#dc3545">(Libur)</font>'
@@ -385,7 +360,7 @@ def get_calendar_weeks(scope, year, month, avail_items, excluded_days):
             })
         return [week]
 
-    cal = calendar.Calendar(firstweekday=0)  # 0 = Senin
+    cal = calendar.Calendar(firstweekday=0) 
     weeks_raw = cal.monthdayscalendar(year, month)
     weeks = []
     for week_nums in weeks_raw:
@@ -403,28 +378,25 @@ def get_calendar_weeks(scope, year, month, avail_items, excluded_days):
         weeks.append(week)
     return weeks
 
-
 def build_calendar_html(weeks):
-    """Grid kalender di layar: blok 7 kolom header lalu baris isi, berulang
-    per minggu."""
     rows_html = []
     for week in weeks:
         header_cells, content_cells = [], []
         for cell in week:
             if cell["is_blank"]:
                 header_cells.append(
-                    '<th style="background:#e9ecef;border:1px solid #ddd;padding:6px;min-width:100px;"></th>'
+                    '<th style="background:#f6cdcd;border:1px solid #FF4B4B;padding:6px;min-width:100px;"></th>'
                 )
                 content_cells.append(
-                    '<td style="background:#fafafa;border:1px solid #ddd;padding:6px;"></td>'
+                    '<td style="background:#fafafa;border:1px solid #FF4B4B;padding:6px;"></td>'
                 )
                 continue
             header_cells.append(
-                '<th style="background:#222831;color:#ffbe33;border:1px solid #444;'
-                f'padding:6px;min-width:100px;text-align:center;">{cell["header_markup"]}</th>'
+                '<th style="background:#f6cdcd;color:#FF4B4B;border:1px solid #FF4B4B;'
+                f'padding:3px;min-width:100px;text-align:center;">{cell["header_markup"]}</th>'
             )
             content_cells.append(
-                '<td style="border:1px solid #ddd;padding:6px;vertical-align:top;'
+                '<td style="border:1px solid #FF4B4B;padding:6px;vertical-align:top;'
                 f'font-size:13px;">{cell["content_markup"].replace("&bull;", "•")}</td>'
             )
         rows_html.append("<tr>" + "".join(header_cells) + "</tr>")
@@ -437,10 +409,7 @@ def build_calendar_html(weeks):
         "</table></div>"
     )
 
-
 def build_calendar_pdf(weeks, scope_label, capacity, target_mode):
-    """PDF dengan grid yang sama persis strukturnya dengan tampilan di layar:
-    blok 7 kolom header lalu baris isi, berulang per minggu."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=landscape(letter), title="Jadwal",
@@ -448,7 +417,7 @@ def build_calendar_pdf(weeks, scope_label, capacity, target_mode):
     )
     styles = getSampleStyleSheet()
     header_style = ParagraphStyle("header", parent=styles["Normal"], fontSize=9, leading=11,
-                                   textColor=colors.HexColor("#ffbe33"), alignment=1)
+                                   textColor=colors.HexColor("#FF4B4B"), alignment=1)
     content_style = ParagraphStyle("content", parent=styles["Normal"], fontSize=8, leading=11)
 
     mode_text = "Tepat" if target_mode == "Tepat" else "Maksimal"
@@ -473,8 +442,8 @@ def build_calendar_pdf(weeks, scope_label, capacity, target_mode):
 
         tbl = Table([header_row, content_row], colWidths=[col_width] * 7)
         tbl.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#222831")),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f6cdcd")),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#FF4B4B")),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("TOPPADDING", (0, 0), (-1, -1), 5),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
@@ -498,7 +467,8 @@ tab_scope, tab_items, tab_constraints, tab_run = st.tabs(
 with tab_scope:
     st.subheader("Pilih periode jadwal")
     scope = st.radio("Periode", ["Seminggu", "Sebulan"], horizontal=True,
-                      index=0 if st.session_state.scope == "Seminggu" else 1)
+                      index=0 if st.session_state.scope == "Seminggu" else 1,
+                      key="scope_radio")
     if scope != st.session_state.scope:
         st.session_state.scope = scope
         st.session_state.result = None
@@ -509,8 +479,10 @@ with tab_scope:
         c1, c2 = st.columns(2)
         month = c1.selectbox("Bulan", list(range(1, 13)),
                               format_func=lambda m: MONTH_NAMES[m - 1],
-                              index=st.session_state.month - 1)
-        year = c2.number_input("Tahun", min_value=2000, max_value=2100, value=st.session_state.year)
+                              index=st.session_state.month - 1,
+                              key="month_select")
+        year = c2.number_input("Tahun", min_value=2000, max_value=2100, value=st.session_state.year,
+                                key="year_input")
         if month != st.session_state.month or year != st.session_state.year:
             st.session_state.month = month
             st.session_state.year = year
@@ -525,8 +497,23 @@ day_keys, day_labels = get_day_keys(
 )
 label_of = dict(zip(day_keys, day_labels))
 
-avail_day_keys = [k for k in day_keys if k not in st.session_state.excluded_days]
-avail_day_labels = [label_of[k] for k in avail_day_keys]
+# scope sudah pasti terbaru di titik ini (tab Periode sudah selesai berjalan
+# di atas), jadi aman untuk mengisi judul yang tadi dicadangkan.
+if st.session_state.scope == "Seminggu":
+    title_placeholder.title("Jadwal Mingguan", help="Susun jadwal secara otomatis untuk satu minggu dengan mempertimbangkan hari yang tidak boleh digunakan, item yang tidak boleh muncul di hari yang sama, dan target jumlah item per hari.")
+else:
+    title_placeholder.title("Jadwal Bulanan", help="Susun jadwal secara otomatis untuk satu bulan tertentu, dengan mempertimbangkan tanggal yang tidak boleh digunakan, item yang tidak boleh muncul di tanggal yang sama, dan target jumlah item per hari.")
+
+
+def get_avail_days(day_keys, label_of):
+    """Dihitung ulang tiap kali dipakai (bukan sekali di atas) supaya selalu
+    mengikuti nilai excluded_days TERBARU di run yang sama — kalau dihitung
+    sekali saja SEBELUM tab Aturan (tempat excluded_days diubah), hasilnya
+    akan telat satu interaksi (baru kebaca benar di klik berikutnya)."""
+    avail_keys = [k for k in day_keys if k not in st.session_state.excluded_days]
+    avail_labels = [label_of[k] for k in avail_keys]
+    return avail_keys, avail_labels
+
 
 # --- Tab 2: Item ----------------------------------------------------------
 with tab_items:
@@ -571,72 +558,16 @@ with tab_constraints:
     if not st.session_state.item_list:
         st.info("Tambah item terlebih dahulu di tab 'Item'.")
     else:
-        st.subheader("Banyak item per hari")
-        cap_mode = st.radio(
-            "Cara menentukan jumlah item:", 
-            [
-                "Otomatis", 
-                "Manual (Atur sendiri)"
-            ], 
-                horizontal=True,
-            index=0 if st.session_state.capacity_mode == "Otomatis" else 1,
-        )
-        st.session_state.capacity_mode = cap_mode
-
-        target_mode = st.radio(
-            "Yang ingin dibuat sama rata:",
-            [
-                "Jumlah item per hari",
-                "Kemunculan setiap item",
-            ],
-            horizontal=True,
-            index=0 if st.session_state.capacity_target_mode == "Tepat" else 1,
-            help=(
-                "Jumlah item per hari: misalnya target 3 item per hari, maka setiap hari "
-                "akan diisi tepat 3 item. Jumlah kemunculan tiap item bisa berbeda.\n\n"
-                "Kemunculan setiap item: setiap item akan mendapat jumlah kemunculan "
-                "yang sama. Karena pembagiannya harus merata, beberapa hari bisa berisi "
-                "lebih banyak atau lebih sedikit item."
-            ),
-        )
-        st.session_state.capacity_target_mode = "Tepat" if target_mode.startswith("Tepat") else "Maksimal"
-
-        if cap_mode == "Manual (Atur sendiri)":
-            st.session_state.capacity_manual = st.number_input(
-                "Item per hari", min_value=1, max_value=100,
-                value=st.session_state.capacity_manual,
-            )
-            preview_capacity = st.session_state.capacity_manual
-        else:
-            preview_capacity = compute_capacity(
-                len(st.session_state.item_list), len(avail_day_keys), "Otomatis", 1
-            )
-
-        if len(avail_day_keys) < len(day_keys):
-            st.caption(f"({len(day_keys) - len(avail_day_keys)} hari/tanggal dikecualikan sebagai hari libur.)")
-
-        preview_occ = compute_occurrences(
-            st.session_state.item_list, len(avail_day_keys), preview_capacity,
-            st.session_state.capacity_target_mode,
-        )
-        judul_expander = (
-            "Pratinjau: berapa kali setiap item akan muncul dalam seminggu?"
-            if st.session_state.scope == "Seminggu"
-            else "Pratinjau: berapa kali setiap item akan muncul dalam sebulan?"
-        )
-
-        with st.expander(judul_expander):
-            st.table(pd.DataFrame(
-                {"Item": list(preview_occ.keys()), "Kemunculan": list(preview_occ.values())}
-            ))
-
-        st.divider()
+        # Bagian hari/tanggal libur dipindah ke ATAS, sebelum bagian Kapasitas —
+        # supaya avail_day_keys yang dipakai di bagian Kapasitas & Pratinjau di
+        # bawah selalu memakai nilai excluded_days TERBARU dari interaksi ini,
+        # bukan nilai lama dari sebelum tab ini dibuka/diubah.
         if st.session_state.scope == "Seminggu":
             subheader2 = "Hari yang ingin dikosongkan"
-            help2="Jadwal tidak akan dibuat pada hari yang dipilih."
+            help2 = "Jadwal tidak akan dibuat pada hari yang dipilih."
         else:
             subheader2 = "Tanggal yang ingin dikosongkan"
-            help2="Jadwal tidak akan dibuat pada tanggal yang dipilih."
+            help2 = "Jadwal tidak akan dibuat pada tanggal yang dipilih."
         st.subheader(subheader2, help=help2)
         if st.session_state.scope == "Seminggu":
             selected_excl = st.multiselect(
@@ -675,57 +606,146 @@ with tab_constraints:
             else:
                 st.caption("Belum ada hari atau tanggal libur.")
 
+        # Dihitung SETELAH bagian di atas (bukan sekali di puncak skrip) supaya
+        # perubahan barusan langsung kepakai di Kapasitas & Pratinjau di bawah,
+        # tanpa perlu interaksi kedua.
+        avail_day_keys, avail_day_labels = get_avail_days(day_keys, label_of)
+
         st.divider()
-        if st.session_state.scope == "Seminggu":
-            subheader3 = "Hari yang dilarang untuk setiap item"
-            help3 = "Pilih hari yang dilarang untuk item ini."
+        st.subheader("Banyak item per hari")
+        cap_mode = st.radio(
+            "Cara menentukan jumlah item:", 
+            [
+                "Otomatis", 
+                "Manual (Atur sendiri)"
+            ], 
+                horizontal=True,
+            index=0 if st.session_state.capacity_mode == "Otomatis" else 1,
+            key="cap_mode_radio",
+        )
+        st.session_state.capacity_mode = cap_mode
+
+        target_mode = st.radio(
+            "Yang ingin dibuat sama rata:",
+            [
+                "Jumlah item per hari",
+                "Kemunculan setiap item",
+            ],
+            horizontal=True,
+            index=0 if st.session_state.capacity_target_mode == "Tepat" else 1,
+            key="target_mode_radio",
+            help=(
+                "Jumlah item per hari: misalnya target 3 item per hari, maka setiap hari "
+                "akan diisi tepat 3 item. Jumlah kemunculan tiap item bisa berbeda.\n\n"
+                "Kemunculan setiap item: setiap item akan mendapat jumlah kemunculan "
+                "yang sama. Karena pembagiannya harus merata, beberapa hari bisa berisi "
+                "lebih banyak atau lebih sedikit item."
+            ),
+        )
+        st.session_state.capacity_target_mode = "Tepat" if target_mode == "Jumlah item per hari" else "Maksimal"
+
+        if cap_mode == "Manual (Atur sendiri)":
+            st.session_state.capacity_manual = st.number_input(
+                "Item per hari", min_value=1, max_value=100,
+                value=st.session_state.capacity_manual,
+                key="capacity_manual_input",
+            )
+            preview_capacity = st.session_state.capacity_manual
         else:
-            subheader3 = "Tanggal yang dilarang untuk setiap item"
-            help3 = "Tambahkan satu tanggal atau rentang tanggal yang dilarang untuk setiap item."
-        st.subheader(subheader3, help=help3)
+            preview_capacity = compute_capacity(
+                len(st.session_state.item_list), len(avail_day_keys), "Otomatis", 1
+            )
+
+        if len(avail_day_keys) < len(day_keys):
+            st.caption(f"({len(day_keys) - len(avail_day_keys)} hari/tanggal dikecualikan sebagai hari libur.)")
+
+        preview_occ = compute_occurrences(
+            st.session_state.item_list, len(avail_day_keys), preview_capacity,
+            st.session_state.capacity_target_mode,
+        )
+        judul_expander = (
+            "Pratinjau: berapa kali setiap item akan muncul dalam seminggu?"
+            if st.session_state.scope == "Seminggu"
+            else "Pratinjau: berapa kali setiap item akan muncul dalam sebulan?"
+        )
+
+        with st.expander(judul_expander):
+            st.table(pd.DataFrame(
+                {"Item": list(preview_occ.keys()), "Kemunculan": list(preview_occ.values())}
+            ))
+
+        st.divider()
+        def tambah_larangan_mingguan():
+            item = st.session_state.ban_item_m
+            hari_list = st.session_state.ban_hari_m
+            if item and hari_list:
+                st.session_state.banned_days.setdefault(item, set()).update(hari_list)
+
+        def tambah_larangan_bulanan():
+            item = st.session_state.ban_item_b
+            tgl = st.session_state.ban_tgl_b
+            if item and tgl:
+                # Cek apakah rentang tanggal atau tanggal tunggal
+                if isinstance(tgl, tuple) and len(tgl) == 2:
+                    new_dates = dates_in_range(tgl[0], tgl[1])
+                else:
+                    single = tgl if isinstance(tgl, dt.date) else tgl[0]
+                    new_dates = [single.isoformat()]
+                st.session_state.banned_days.setdefault(item, set()).update(new_dates)
+
+        def hapus_larangan(item_target, hari_target):
+            st.session_state.banned_days[item_target].discard(hari_target)
+
         if st.session_state.scope == "Seminggu":
-            for item in st.session_state.item_list:
-                current = st.session_state.banned_days.get(item, set())
-                selected = st.multiselect(
-                    item, day_keys, default=[d for d in day_keys if d in current], key=f"ban_{item}", placeholder="Pilih hari..."
-                )
-                st.session_state.banned_days[item] = set(selected)
+            st.subheader("Hari yang dilarang", help="Pilih item dan tambahkan hari apa saja yang tidak boleh digunakan.")
+            c1, c2, c3 = st.columns([3, 3, 2])
+            with c1:
+                st.selectbox("Pilih Item", st.session_state.item_list, key="ban_item_m")
+            with c2:
+                st.multiselect("Pilih Hari", day_keys, key="ban_hari_m", placeholder="Pilih hari...")
+            with c3:
+                st.write("") # Spasi vertikal agar tombol sejajar dengan input
+                st.write("")
+                st.button("Tambah Aturan", on_click=tambah_larangan_mingguan, key="btn_add_ban_m", use_container_width=True)
+                
         else:
+            st.subheader("Tanggal yang dilarang", help="Pilih item dan tambahkan tanggal/rentang tanggal yang tidak boleh digunakan.")
             month_start = dt.date(st.session_state.year, st.session_state.month, 1)
             month_end = dt.date(
-                st.session_state.year, st.session_state.month,
-                calendar.monthrange(st.session_state.year, st.session_state.month)[1],
+                st.session_state.year, st.session_state.month, 
+                calendar.monthrange(st.session_state.year, st.session_state.month)[1]
             )
-            for item in st.session_state.item_list:
-                with st.expander(f"{item} ({len(st.session_state.banned_days.get(item, set()))} hari dilarang)"):
-                    picked = st.date_input(
-                        "Pilih satu tanggal atau rentang tanggal.", value=(month_start, month_start),
-                        min_value=month_start, max_value=month_end, key=f"banpick_{item}", format="DD-MM-YYYY"
-                    )
-                    if st.button("Tambah Aturan", key=f"addban_{item}"):
-                        if isinstance(picked, tuple) and len(picked) == 2:
-                            new_dates = dates_in_range(picked[0], picked[1])
-                        else:
-                            single = picked if isinstance(picked, dt.date) else picked[0]
-                            new_dates = [single.isoformat()]
-                        st.session_state.banned_days.setdefault(item, set()).update(new_dates)
-                        st.rerun()
+            
+            c1, c2, c3 = st.columns([3, 3, 2])
+            with c1:
+                st.selectbox("Pilih Item", st.session_state.item_list, key="ban_item_b")
+            with c2:
+                st.date_input(
+                    "Pilih Tanggal", value=(month_start, month_start), 
+                    min_value=month_start, max_value=month_end, 
+                    key="ban_tgl_b", format="DD-MM-YYYY"
+                )
+            with c3:
+                st.write("")
+                st.write("")
+                st.button("Tambah Aturan", on_click=tambah_larangan_bulanan, key="btn_add_ban_b", use_container_width=True)
 
-                    current = sorted(st.session_state.banned_days.get(item, set()))
-                    hari = {
-                        0: "Senin", 1: "Selasa", 2: "Rabu",
-                        3: "Kamis", 4: "Jumat", 5: "Sabtu", 6: "Minggu"
-                    }
-
-                    if current:
-                        for d in current:
-                            c1, c2 = st.columns([4, 1])
-                            c1.write(label_of.get(d, str(d)))
-                            if c2.button("Hapus", key=f"rmban_{item}_{d}"):
-                                st.session_state.banned_days[item].discard(d)
-                                st.rerun()
-                    else:
-                        st.caption("Item ini bisa kapan saja.")
+        st.markdown("**Aturan saat ini:**")
+        ada_aturan = False
+        
+        for item in st.session_state.item_list:
+            current = sorted(st.session_state.banned_days.get(item, set()))
+            if current:
+                ada_aturan = True
+                with st.expander(f"{item} ({len(current)} hari dilarang)"):
+                    for d in current:
+                        col_teks, col_btn = st.columns([4, 1])
+                        col_teks.write(label_of.get(d, str(d)))
+                        # Gunakan args=(...) untuk mengirim parameter ke fungsi callback hapus
+                        col_btn.button("Hapus", key=f"rmban_{item}_{d}", on_click=hapus_larangan, args=(item, d))
+                        
+        if not ada_aturan:
+            st.caption("Belum ada aturan hari yang dilarang.")
 
         st.divider()
         if st.session_state.scope == "Seminggu":
@@ -760,6 +780,11 @@ with tab_constraints:
 
 # --- Tab 4: Jadwalkan ----------------------------------------------------
 with tab_run:
+    # Dihitung ulang di sini (bukan dipakai dari variabel atas) supaya kalau
+    # hari/tanggal libur baru saja diubah di tab Aturan pada interaksi ini,
+    # tab Jadwalkan langsung memakai nilai terbaru itu juga.
+    avail_day_keys, avail_day_labels = get_avail_days(day_keys, label_of)
+
     items = st.session_state.item_list
     if not items:
         st.info("Tambah item terlebih dahulu di tab 'Item'.")
