@@ -92,13 +92,21 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("Jadwal Mingguan / Bulanan")
-st.caption(
-    "Susun jadwal secara otomatis untuk satu minggu atau bulan tertentu, "
-    "dengan mempertimbangkan hari/tanggal yang tidak boleh digunakan, item "
-    "yang tidak boleh muncul di hari yang sama, dan target jumlah item per hari."
+st.markdown(
+    """
+    <style>
+    [data-testid="stHeadingWithActionElements"] {
+        justify-content: center;
+        text-align: center;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
 )
-
+if st.session_state.scope == "Seminggu":
+    st.title("Jadwal Mingguan", help="Susun jadwal secara otomatis untuk satu minggu dengan mempertimbangkan hari yang tidak boleh digunakan, item yang tidak boleh muncul di hari yang sama, dan target jumlah item per hari.")
+else:
+    st.title("Jadwal Bulanan", help="Susun jadwal secara otomatis untuk satu bulan tertentu, dengan mempertimbangkan tanggal yang tidak boleh digunakan, item yang tidak boleh muncul di tanggal yang sama, dan target jumlah item per hari.")
 
 # ----------------------------------------------------------------------
 # Item (helper)
@@ -537,17 +545,15 @@ with tab_items:
     st.subheader("Tambah sekaligus dari file")
     up_col1, up_col2 = st.columns(2)
     with up_col1:
-        excel_file = st.file_uploader("Unggah Excel (.xlsx / .xls)", type=["xlsx", "xls"])
+        excel_file = st.file_uploader("Unggah Excel (.xlsx / .xls)", type=["xlsx", "xls"],
+            help= "Setiap sel yang terisi akan dianggap sebagai satu item, termasuk dari semua sheet dan kolom."
+        )
         handle_upload(excel_file, parse_excel, "excel")
     with up_col2:
-        docx_file = st.file_uploader("Unggah Word (.docx)", type=["docx"])
+        docx_file = st.file_uploader("Unggah Word (.docx)", type=["docx"],
+            help= "Setiap paragraf atau baris yang dipisahkan dengan Enter akan dianggap sebagai satu item. Item yang sama akan otomatis dihapus."
+        )
         handle_upload(docx_file, parse_docx, "docx")
-    st.caption(
-        "Excel: setiap sel yang terisi akan dianggap sebagai satu item, termasuk "
-        "dari semua sheet dan kolom.")
-    st.caption(
-        "Word: setiap paragraf atau baris yang dipisahkan dengan Enter akan "
-        "dianggap sebagai satu item. Item yang sama akan otomatis dihapus.")
     st.divider()
     st.subheader(f"Item saat ini ({len(st.session_state.item_list)})")
     if not st.session_state.item_list:
@@ -559,7 +565,7 @@ with tab_items:
             if c2.button("Hapus", key=f"rm_{item}"):
                 remove_item(item)
                 st.rerun()
-st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
+
 # --- Tab 3: Aturan ------------------------------------------------------
 with tab_constraints:
     if not st.session_state.item_list:
@@ -605,10 +611,6 @@ with tab_constraints:
             preview_capacity = compute_capacity(
                 len(st.session_state.item_list), len(avail_day_keys), "Otomatis", 1
             )
-            st.caption(
-                f"Ada {len(st.session_state.item_list)} item untuk "
-                f"{len(avail_day_keys)} hari. Targetnya **{preview_capacity} item per hari**."
-            )
 
         if len(avail_day_keys) < len(day_keys):
             st.caption(f"({len(day_keys) - len(avail_day_keys)} hari/tanggal dikecualikan sebagai hari libur.)")
@@ -617,14 +619,25 @@ with tab_constraints:
             st.session_state.item_list, len(avail_day_keys), preview_capacity,
             st.session_state.capacity_target_mode,
         )
-        with st.expander("Pratinjau: berapa kali setiap item akan muncul?"):
+        judul_expander = (
+            "Pratinjau: berapa kali setiap item akan muncul dalam seminggu?"
+            if st.session_state.scope == "Seminggu"
+            else "Pratinjau: berapa kali setiap item akan muncul dalam sebulan?"
+        )
+
+        with st.expander(judul_expander):
             st.table(pd.DataFrame(
                 {"Item": list(preview_occ.keys()), "Kemunculan": list(preview_occ.values())}
             ))
 
         st.divider()
-        st.subheader("Hari atau tanggal yang ingin dikosongkan")
-        st.caption("Jadwal tidak akan dibuat pada hari atau tanggal yang dipilih.")
+        if st.session_state.scope == "Seminggu":
+            subheader2 = "Hari yang ingin dikosongkan"
+            help2="Jadwal tidak akan dibuat pada hari yang dipilih."
+        else:
+            subheader2 = "Tanggal yang ingin dikosongkan"
+            help2="Jadwal tidak akan dibuat pada tanggal yang dipilih."
+        st.subheader(subheader2, help=help2)
         if st.session_state.scope == "Seminggu":
             selected_excl = st.multiselect(
                 "Pilih hari libur", day_keys,
@@ -639,7 +652,7 @@ with tab_constraints:
                 calendar.monthrange(st.session_state.year, st.session_state.month)[1],
             )
             picked_excl = st.date_input(
-                "Pilih tanggal atau rentang tanggal libur", value=(month_start, month_start),
+                "Pilih tanggal atau rentang tanggal libur:", value=(month_start, month_start),
                 min_value=month_start, max_value=month_end, key="excl_day_pick", format="DD-MM-YYYY",
             )
             if st.button("Tambah Hari Libur", key="add_excl_day"):
@@ -663,9 +676,14 @@ with tab_constraints:
                 st.caption("Belum ada hari atau tanggal libur.")
 
         st.divider()
-        st.subheader("Hari yang dilarang untuk setiap item")
         if st.session_state.scope == "Seminggu":
-            st.caption("Pilih hari yang dilarang untuk item ini.")
+            subheader3 = "Hari yang dilarang untuk setiap item"
+            help3 = "Pilih hari yang dilarang untuk item ini."
+        else:
+            subheader3 = "Tanggal yang dilarang untuk setiap item"
+            help3 = "Tambahkan satu tanggal atau rentang tanggal yang dilarang untuk setiap item."
+        st.subheader(subheader3, help=help3)
+        if st.session_state.scope == "Seminggu":
             for item in st.session_state.item_list:
                 current = st.session_state.banned_days.get(item, set())
                 selected = st.multiselect(
@@ -673,7 +691,6 @@ with tab_constraints:
                 )
                 st.session_state.banned_days[item] = set(selected)
         else:
-            st.caption("Tambahkan satu tanggal atau rentang tanggal yang dilarang untuk setiap item.")
             month_start = dt.date(st.session_state.year, st.session_state.month, 1)
             month_end = dt.date(
                 st.session_state.year, st.session_state.month,
@@ -711,7 +728,11 @@ with tab_constraints:
                         st.caption("Item ini bisa kapan saja.")
 
         st.divider()
-        st.subheader("Item yang harus dijadwalkan di hari berbeda")
+        if st.session_state.scope == "Seminggu":
+            subheader4 = "Item yang harus dijadwalkan di hari berbeda"
+        else:
+            subheader4 = "Item yang harus dijadwalkan di tanggal berbeda"
+        st.subheader(subheader4)
         colA, colB, colC = st.columns([3, 3, 1])
         with colA:
             item_a = st.selectbox("Item A", st.session_state.item_list, key="excl_a")
@@ -730,52 +751,53 @@ with tab_constraints:
         if st.session_state.exclusion_pairs:
             for pair in list(st.session_state.exclusion_pairs):
                 c1, c2 = st.columns([5, 1])
-                c1.write(f"**{pair[0]}**  dan  **{pair[1]}**   harus dijadwalkan di hari berbeda.")
+                c1.write(f"**{pair[0]}**  dan  **{pair[1]}**   harus dijadwalkan di hari atau tanggal berbeda.")
                 if c2.button("Hapus", key=f"rmpair_{pair[0]}_{pair[1]}"):
                     st.session_state.exclusion_pairs.remove(pair)
                     st.rerun()
         else:
-            st.caption("Belum ada item yang perlu dijadwalkan di hari berbeda.")
-st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
+            st.caption("Belum ada item yang perlu dijadwalkan di hari atau tanggal berbeda.")
+
 # --- Tab 4: Jadwalkan ----------------------------------------------------
 with tab_run:
     items = st.session_state.item_list
     if not items:
         st.info("Tambah item terlebih dahulu di tab 'Item'.")
     elif not avail_day_keys:
-        st.warning("Semua hari/tanggal saat ini menjadi hari libur — tidak ada yang bisa dijadwalkan.")
+        st.warning("Semua hari atau tanggal saat ini menjadi hari libur. Tidak ada yang bisa dijadwalkan.")
     else:
         capacity = compute_capacity(len(items), len(avail_day_keys), st.session_state.capacity_mode, st.session_state.capacity_manual)
         target_mode = st.session_state.capacity_target_mode
         occurrences = compute_occurrences(items, len(avail_day_keys), capacity, target_mode)
         tokens = build_tokens(items, occurrences)
 
-        st.subheader("Pengaturan Jadwal")
-        st.caption("Biasanya bisa langsung klik 'Buat Jadwal'. Kalau hasilnya belum sesuai, atur cara sistem mencari jadwal di pengaturan lanjutan.")
-
+        st.subheader("Pengaturan Jadwal",
+                     help="Biasanya bisa langsung klik 'Buat Jadwal'. Kalau hasilnya belum sesuai, atur cara sistem mencari jadwal di pengaturan lanjutan."
+                     )
         with st.expander("Pengaturan lanjutan"):
             st.caption("Pengaturan ini menentukan seberapa banyak dan seberapa bervariasi susunan jadwal yang akan dicoba.")
             c1, c2, c3 = st.columns(3)
             pop_size = c1.number_input("Banyak kemungkinan", 20, 1000, 150, 10, help="Makin besar, makin banyak jadwal dicoba. Waktu proses bertambah.")
             generations = c2.number_input("Jumlah percobaan", 50, 3000, 300, 50, help="Makin besar, makin lama mencari susunan yang sesuai.")
             mutation_rate = c3.slider("Variasi pencarian", 0.0, 1.0, 0.15, help="Seberapa sering sistem mengubah susunan jadwal untuk mencari alternatif.")
+            st.caption(f"{len(items)} item × target {capacity} item/hari × {len(avail_day_keys)} hari tersedia → {len(tokens)} jadwal yang harus diisi.")
 
-        st.caption(f"{len(items)} item × target {capacity} item/hari × {len(avail_day_keys)} hari tersedia → {len(tokens)} jadwal yang harus diisi.")
+        c1, c2, c3 = st.columns([1, 1, 1])
+        with c2:
+            if st.button("Buat Jadwal", type="primary", use_container_width=True):
+                with st.spinner("Sedang menyusun jadwal..."):
+                    chromo, score, history = run_ga(
+                        tokens, avail_day_keys, st.session_state.banned_days, st.session_state.exclusion_pairs,
+                        capacity, int(pop_size), int(generations), float(mutation_rate), target_mode
+                    )
 
-        if st.button("Buat Jadwal", type="primary"):
-            with st.spinner("Sedang menyusun jadwal..."):
-                chromo, score, history = run_ga(
-                    tokens, avail_day_keys, st.session_state.banned_days, st.session_state.exclusion_pairs,
-                    capacity, int(pop_size), int(generations), float(mutation_rate), target_mode
-                )
-
-            st.session_state.result = {
-                "chromo": chromo, "score": score, "history": history, "tokens": tokens,
-                "capacity": capacity, "target_mode": target_mode,
-                "avail_day_keys": avail_day_keys, "avail_day_labels": avail_day_labels,
-                "full_day_keys": day_keys, "full_day_labels": day_labels,
-                "excluded_days": set(st.session_state.excluded_days),
-            }
+                st.session_state.result = {
+                    "chromo": chromo, "score": score, "history": history, "tokens": tokens,
+                    "capacity": capacity, "target_mode": target_mode,
+                    "avail_day_keys": avail_day_keys, "avail_day_labels": avail_day_labels,
+                    "full_day_keys": day_keys, "full_day_labels": day_labels,
+                    "excluded_days": set(st.session_state.excluded_days),
+                }
 
         result = st.session_state.get("result")
         stale = (
@@ -851,4 +873,3 @@ with tab_run:
 
         elif result:
             st.info("Pengaturan periode, tanggal, atau hari libur berubah sejak jadwal terakhir dibuat. Klik **Buat Jadwal** lagi.")
-st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
